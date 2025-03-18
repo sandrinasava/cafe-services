@@ -8,23 +8,21 @@ import (
 
 type Config struct {
 	Server struct {
-		Port string `env:"PORT" env-default:"8082"`
+		Port string `env:"PORT" env-default:"8081"`
 	} `env-prefix:"SERVER"`
 
 	Kafka struct {
-		Broker   string `env:"KAFKA_BROKER" env-default:"kafka:9092"`
-		TopicIn  string `env:"KAFKA_TOPIC_IN" env-default:"new_orders"`
-		TopicOut string `env:"KAFKA_TOPIC_OUT" env-default:"ready_orders"`
+		Broker string `env:"KAFKA_BROKER" env-default:"kafka:9092"`
+		Topic  string `env:"KAFKA_TOPIC" env-default:"new_orders"`
 	} `env-prefix:"KAFKA"`
 
-	JWT struct {
-		SecretKey string `env:"JWT_SECRET_KEY" env-required:"true"`
-	} `env-prefix:"JWT"`
+	Redis struct {
+		Host string `env:"REDIS_HOST" env-default:"redis:6379"`
+	} `env-prefix:"REDIS"`
 }
 
 func loadConfig() (*Config, error) {
 	var cfg Config
-
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
 		log.Fatalf("Failed to read configuration: %v", err)
 		return nil, err

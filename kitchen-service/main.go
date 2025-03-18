@@ -108,7 +108,7 @@ func main() {
 	log.Println("Остановка Kitchen-service")
 	//закрытие консьюмера
 	if err := r.Close(); err != nil {
-		log.Fatalf("Не удалось закрыть консьюмер: %v", err)
+		log.Printf("Не удалось закрыть консьюмер: %v", err)
 	}
 
 	log.Println("Kitchen-service остановлен")
