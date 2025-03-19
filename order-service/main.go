@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,12 +16,13 @@ import (
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 
-	pb "github.com/sandrinasava/cafe-services/auth-service/proto"
-)
+	pb "github.com/sandrinasava/go-proto-module"
 
 // определяю топик, в который будут отправляться сообщения
 const (
-	topic = "new_orders"
+	topicNewOrders      = "new_orders"
+	topicOrderCooked    = "order_cooked"
+	topicOrderDelivered = "order_delivered"
 )
 
 type Order struct {
@@ -36,7 +38,7 @@ type AuthClient struct {
 }
 
 func NewAuthClient(address string) (*AuthClient, error) {
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials())
 	if err != nil {
 		return nil, fmt.Errorf("не удалось подключиться к auth-service: %w", err)
 	}
@@ -68,6 +70,7 @@ func main() {
 	kafkaBroker := cfg.Kafka.Broker
 	redisHost := cfg.Redis.Host
 	authServiceAddress := cfg.AuthService.Address
+	dbDSN := cfg.DB.DSN
 
 	// создание нового клиента Redis
 	rdb := redis.NewClient(&redis.Options{
@@ -84,13 +87,28 @@ func main() {
 	}
 	defer authClient.Close()
 
+	// Подключение к PostgreSQL
+	db, err := sql.Open("postgres", dbDSN)
+	if err != nil {
+		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
+	}
+	defer db.Close()
+
 	//создаю продюсера
 	kWriter := kafka.Writer{
 		Addr:     kafka.TCP(kafkaBroker),
-		Topic:    topic,
+		Topic:    topicNewOrders,
 		Balancer: &kafka.LeastBytes{},
 	}
 	defer kWriter.Close()
+
+	// Создание консюмера Kafka для получения сообщений о приготовлении и доставке
+	kReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{kafkaBroker},
+		Topic:   topicOrderCooked,
+		GroupID: "order-service",
+	})
+	defer kReader.Close()
 
 	// хендлер для обработки заказа
 	http.HandleFunc("/order", func(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +156,7 @@ func main() {
 			Key:   []byte(order.ID),
 			Value: message,
 		})
+
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -149,8 +168,55 @@ func main() {
 			log.Printf("Ошибка кеширования сообщения: %v", err)
 		}
 
+		// Сохранение заказа в PostgreSQL
+		_, err = db.ExecContext(r.Context(), "INSERT INTO orders (id, customer, items, status) VALUES ($1, $2, $3, $4)",
+			order.ID, order.Customer, order.Items, order.Status)
+		if err != nil {
+			http.Error(w, "Ошибка при сохранении заказа в базу данных", http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(w, "Сообщение отправлено: %s\n", order.ID)
+	})
+
+	// Хендлер для получения статуса заказа
+	http.HandleFunc("/order/status", func(w http.ResponseWriter, r *http.Request) {
+		orderID := r.URL.Query().Get("id")
+		if orderID == "" {
+			http.Error(w, "ID заказа не предоставлен", http.StatusBadRequest)
+			return
+		}
+		var order Order
+		// Поиск заказа в кэше
+		cachedOrder, err := rdb.Get(r.Context(), orderID).Result()
+		if err == nil {
+			err = json.Unmarshal([]byte(cachedOrder), &order)
+			if err != nil {
+				http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
+				return
+			}
+		} else if err == redis.Nil {
+			// Поиск заказа в базе данных
+			err = db.QueryRowContext(r.Context(), "SELECT id, customer, items, status FROM orders WHERE id=$1", orderID).Scan(
+				&order.ID, &order.Customer, &order.Items, &order.Status)
+			if err != nil {
+				http.Error(w, "Заказ не найден", http.StatusNotFound)
+				return
+			}
+		} else {
+			http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
+			return
+		}
+
+		err = json.Unmarshal([]byte(cachedOrder), &order)
+		if err != nil {
+			http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(order)
 	})
 
 	// Добавляю таймауты для сервера для предотвращения долгих блокировок
@@ -166,6 +232,35 @@ func main() {
 		log.Printf("Сервис заказов слушает на порту %d", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("HTTP server failed: %v", err)
+		}
+	}()
+
+	// Обработка сообщений из Kafka
+	go func() {
+		for {
+			m, err := kReader.ReadMessage(context.Background())
+			if err != nil {
+				log.Printf("Ошибка при чтении сообщения из Kafka: %v", err)
+				continue
+			}
+
+			var order Order
+			err = json.Unmarshal(m.Value, &order)
+			if err != nil {
+				log.Printf("Ошибка при десериализации сообщения: %v", err)
+				continue
+			}
+
+			// Обновление статуса заказа в Redis и PostgreSQL
+			err = rdb.Set(context.Background(), order.ID, string(m.Value), 1*time.Hour).Err()
+			if err != nil {
+				log.Printf("Ошибка обновления статуса заказа в Redis: %v", err)
+			}
+
+			_, err = db.ExecContext(context.Background(), "UPDATE orders SET status=$1 WHERE id=$2", order.Status, order.ID)
+			if err != nil {
+				log.Printf("Ошибка обновления статуса заказа в PostgreSQL: %v", err)
+			}
 		}
 	}()
 
@@ -196,6 +291,10 @@ func main() {
 	// закрытие клиента Redis
 	if err := rdb.Close(); err != nil {
 		log.Printf("Не удалось закрыть клиент Redis: %v", err)
+	}
+	// закрытие бд
+	if err := db.Close(); err != nil {
+		log.Printf("Не удалось закрыть соединение с базой данных: %v", err)
 	}
 
 	log.Println("Order-service остановлен")

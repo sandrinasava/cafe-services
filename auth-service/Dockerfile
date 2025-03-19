@@ -1,66 +1,44 @@
-# Используем официальный образ Go для сборки
+# Этап сборки
 FROM golang:1.20 AS builder
 
-# Устанавливаем необходимые пакеты
-RUN apt-get update && apt-get install -y \
-    unzip \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+# Установка необходимых инструментов
+RUN PB_REL="https://github.com/protocolbuffers/protobuf/releases" \
+    && curl -LO $PB_REL/download/v25.1/protoc-25.1-linux-x86_64.zip \
+    && unzip protoc-25.1-linux-x86_64.zip -d $HOME/.local \
+    && rm protoc-25.1-linux-x86_64.zip \
+    && export PATH="$PATH:$HOME/.local/bin" \
+    && echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.bashrc \
+    && source ~/.bashrc
 
-# Устанавливаем protoc
-RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip && \
-    unzip protoc-21.12-linux-x86_64.zip -d protoc3 && \
-    mv protoc3/bin/protoc /usr/local/bin/ && \
-    mv protoc3/include/* /usr/local/include/ && \
-    rm -rf protoc3 protoc-21.12-linux-x86_64.zip
+# Установка Go плагинов для protoc
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# Устанавливаем плагин protoc-gen-go
-RUN go install github.com/golang/protobuf/protoc-gen-go@latest
-
-# Устанавливаем плагин protoc-gen-go-grpc
-RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-# Устанавливаем рабочую директорию
+# Копирование модуля и зависимостей
 WORKDIR /app
-
-# Копируем go.mod и go.sum
 COPY go.mod go.sum ./
-
-# Устанавливаем зависимости
 RUN go mod download
 
-# Копируем остальные файлы
+# Копирование исходного кода
 COPY . .
 
-# Генерируем Go-код из auth.proto
-RUN protoc --go_out=./proto --go-grpc_out=./proto proto/auth.proto
+# Генерация кода из .proto файлов
+RUN protoc --go_out=. --go-grpc_out=. ./proto/auth.proto
 
-# Сборка бинарного файла
-RUN go build -o auth-service main.go
+# Сборка приложения
+RUN go build -o myproject .
 
-# Используем минимальный образ для запуска
+# Этап запуска
 FROM alpine:latest
 
-# Устанавливаем необходимые библиотеки
+# Установка необходимых зависимостей
 RUN apk add --no-cache ca-certificates
 
-# Устанавливаем рабочую директорию
+# Копирование собранного приложения из этапа сборки
+COPY --from=builder /app/myproject /app/myproject
+
+# Установка рабочей директории
 WORKDIR /app
 
-# Копируем сгенерированный бинарный файл
-COPY --from=builder /app/auth-service .
-
-# Копируем сгенерированные файлы
-COPY --from=builder /app/proto ./proto
-
-# Копируем конфигурационные файлы
-COPY --from=builder /app/config.go .
-
-# Копируем init.sql
-COPY --from=builder /app/init.sql .
-
-# Устанавливаем порт
-EXPOSE 50051
-
-# Запуск сервиса
-CMD ["./auth-service"]
+# Запуск приложения
+CMD ["./myproject"]
