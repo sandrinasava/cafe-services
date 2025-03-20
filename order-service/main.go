@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 
 	pb "github.com/sandrinasava/go-proto-module"
+)
 
 // определяю топик, в который будут отправляться сообщения
 const (
@@ -37,11 +38,14 @@ type AuthClient struct {
 	conn   *grpc.ClientConn
 }
 
+// ф-я создает новый клиент для взаимодействия с auth-service по gRPC
 func NewAuthClient(address string) (*AuthClient, error) {
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials())
+	//установка соединения с сервером gRPC
+	conn, err := grpc.NewClient(address)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось подключиться к auth-service: %w", err)
 	}
+	//создание клиента
 	return &AuthClient{
 		client: pb.NewAuthServiceClient(conn),
 		conn:   conn,
@@ -221,7 +225,7 @@ func main() {
 
 	// Добавляю таймауты для сервера для предотвращения долгих блокировок
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -229,7 +233,7 @@ func main() {
 
 	// Запуск сервера в отдельной горутине
 	go func() {
-		log.Printf("Сервис заказов слушает на порту %d", cfg.Port)
+		log.Printf("Сервис заказов слушает на порту %d", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("HTTP server failed: %v", err)
 		}
