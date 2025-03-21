@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"log"
 	"net"
@@ -11,17 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	pb "github.com/sandrinasava/cafe-services/auth-service/proto"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	pb "github.com/sandrinasava/go-proto-module"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 )
-
-//go:embed init.sql
-var initSQL string
 
 type AuthServer struct {
 	pb.UnimplementedAuthServiceServer
@@ -122,49 +119,48 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *pb.ValidateTokenReq
 	}, nil
 }
 
-func runMigrations(db *sql.DB) error {
-	_, err := db.Exec(initSQL)
+func OpenDB(driver, DSN string) (*sql.DB, error) {
+
+	db, err := sql.Open("postgres", DSN)
 	if err != nil {
-		return fmt.Errorf("не удалось выполнить миграции: %w", err)
+		return nil, fmt.Errorf("Не удалось открыть соединение с базой данных: %v", err)
 	}
-	log.Println("Миграции успешно выполнены")
-	return nil
+	defer db.Close()
+
+	if err = db.Ping(); err != nil {
+		return nil, fmt.Errorf("Не удалось установить соединение с базой данных: %v", err)
+	}
+
+	log.Println("Соединение с бд выполнено")
+	return db, nil
 }
 
 func main() {
+
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Неудачная загрузка конфигураций: %v", err)
 	}
 
-	db, err := sql.Open("postgres", cfg.DBDSN)
+	db, err := OpenDB("postgres", cfg.DBDSN)
 	if err != nil {
-		log.Fatalf("Не удалось открыть соединение с базой данных: %v", err)
-	}
-	defer db.Close()
-
-	// Проверка подключения к базе данных
-	err = db.PingContext(context.Background())
-	if err != nil {
-		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
-	}
-	log.Printf("Подключение к базе данных успешно установлено")
-
-	// Выполнение миграций
-	err = runMigrations(db)
-	if err != nil {
-		log.Fatalf("Не удалось выполнить миграции: %v", err)
+		log.Fatalf("%v", err)
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	//экземпляр gRPC сервера
+	s := grpc.NewServer()
+
+	//регистрация сервиса
+	pb.RegisterAuthServiceServer(s, NewAuthServer(db, cfg.JwtSecret))
+
+	// создание слушателя
+	lis, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
 		log.Fatalf("Не удалось прослушивать порт: %v", err)
 	}
-	log.Printf("Аутентификационный сервис слушает на порту %d", cfg.Port)
+	log.Printf("Auth-service слушает на порту %d", cfg.Port)
 
-	s := grpc.NewServer()
-	pb.RegisterAuthServiceServer(s, NewAuthServer(db, cfg.JwtSecret))
-
+	//запуск сервера
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			log.Fatalf("Не удалось запустить gRPC сервер: %v", err)
@@ -176,10 +172,6 @@ func main() {
 
 	<-stop
 	log.Println("Остановка Auth-service")
-
-	// Создаём контекст с таймаутом для корректного завершения сервера
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	// Корректное завершение gRPC сервера
 	s.GracefulStop()
