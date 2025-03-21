@@ -9,24 +9,25 @@ import (
 type Config struct {
 	Server struct {
 		Port string `env:"PORT" env-default:"8081"`
-	} `env-prefix:"SERVER"`
+	}
 
 	Kafka struct {
 		Broker string `env:"KAFKA_BROKER" env-default:"kafka:9092"`
 		Topic  string `env:"KAFKA_TOPIC" env-default:"new_orders"`
-	} `env-prefix:"KAFKA"`
+	}
 
 	Redis struct {
-		Host string `env:"REDIS_HOST" env-default:"redis:6379"`
-	} `env-prefix:"REDIS"`
+		Host     string `env:"REDIS_HOST" env-default:"redis:6379"`
+		Password string `env:"REDIS_PASSWORD" env-default:"defaultpassword"`
+	}
 
 	AuthService struct {
 		Address string `env:"AUTH_SERVICE_ADDRESS" env-default:"auth-service:50051"`
-	} `env-prefix:"AUTH_SERVICE"`
+	}
 
 	DB struct {
-		DSN string `env:"DB_DSN" env-default:"postgres://user:password@localhost:5432/orders?sslmode=disable"`
-	} `env-prefix:"DATABASE"`
+		DSN string `env:"DB_DSN" env-default:"postgres://username:password@localhost:5432/postgres"`
+	}
 }
 
 func loadConfig() (*Config, error) {

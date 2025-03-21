@@ -14,55 +14,10 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/segmentio/kafka-go"
-	"google.golang.org/grpc"
 
-	pb "github.com/sandrinasava/go-proto-module"
+	"github.com/sandrinasava/cafe-services/order-service/handlers"
+	"github.com/sandrinasava/cafe-services/order-service/models"
 )
-
-// определяю топик, в который будут отправляться сообщения
-const (
-	topicNewOrders      = "new_orders"
-	topicOrderCooked    = "order_cooked"
-	topicOrderDelivered = "order_delivered"
-)
-
-type Order struct {
-	ID       string   `json:"id"`
-	Customer string   `json:"customer"`
-	Items    []string `json:"items"`
-	Status   string   `json:"status"`
-}
-
-type AuthClient struct {
-	client pb.AuthServiceClient
-	conn   *grpc.ClientConn
-}
-
-// ф-я создает новый клиент для взаимодействия с auth-service по gRPC
-func NewAuthClient(address string) (*AuthClient, error) {
-	//установка соединения с сервером gRPC
-	conn, err := grpc.NewClient(address)
-	if err != nil {
-		return nil, fmt.Errorf("не удалось подключиться к auth-service: %w", err)
-	}
-	//создание клиента
-	return &AuthClient{
-		client: pb.NewAuthServiceClient(conn),
-		conn:   conn,
-	}, nil
-}
-
-func (c *AuthClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *AuthClient) ValidateToken(ctx context.Context, token string) (bool, error) {
-	resp, err := c.client.ValidateToken(ctx, &pb.ValidateTokenRequest{Token: token})
-	if err != nil {
-		return false, fmt.Errorf("не удалось валидировать токен: %w", err)
-	}
-	return resp.Valid, nil
-}
 
 func main() {
 	// получаю конфиги
@@ -85,7 +40,7 @@ func main() {
 	defer rdb.Close()
 
 	// создание клиента gRPC для auth-service
-	authClient, err := NewAuthClient(authServiceAddress)
+	authClient, err := models.NewAuthClient(authServiceAddress)
 	if err != nil {
 		log.Fatalf("Не удалось создать клиента для auth-service: %v", err)
 	}
@@ -101,126 +56,89 @@ func main() {
 	//создаю продюсера
 	kWriter := kafka.Writer{
 		Addr:     kafka.TCP(kafkaBroker),
-		Topic:    topicNewOrders,
+		Topic:    models.TopicNewOrders,
 		Balancer: &kafka.LeastBytes{},
 	}
 	defer kWriter.Close()
 
-	// Создание консюмера Kafka для получения сообщений о приготовлении и доставке
+	// Создание консюмера Kafka для получения сообщений о доставке
 	kReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: []string{kafkaBroker},
-		Topic:   topicOrderCooked,
+		Topic:   models.TopicOrderDelivered,
 		GroupID: "order-service",
 	})
 	defer kReader.Close()
 
 	// хендлер для обработки заказа
-	http.HandleFunc("/order", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Метод не доступен", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// достаю данные из сообщения и десериализую
-		var order Order
-		if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-
-		// достаю токен из заголовков
-		token := r.Header.Get("Authorization")
-		if token == "" {
-			http.Error(w, "Токен авторизации не предоставлен", http.StatusUnauthorized)
-			return
-		}
-
-		// валидация токена
-		valid, err := authClient.ValidateToken(r.Context(), token)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		if !valid {
-			http.Error(w, "Недействительный токен", http.StatusUnauthorized)
-			return
-		}
-
-		// TODO(Aleksandrina): Добавить валидацию заказа перед отправкой в Kafka [2024-01-01]
-		order.Status = "received"
-		// сериализация
-		message, err := json.Marshal(order)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// отправляю заказ в Kafka
-		err = kWriter.WriteMessages(r.Context(), kafka.Message{
-			Key:   []byte(order.ID),
-			Value: message,
-		})
-
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// сохраняю заказ в кэше Redis на 1 час
-		err = rdb.Set(r.Context(), order.ID, string(message), 1*time.Hour).Err()
-		if err != nil {
-			log.Printf("Ошибка кеширования сообщения: %v", err)
-		}
-
-		// Сохранение заказа в PostgreSQL
-		_, err = db.ExecContext(r.Context(), "INSERT INTO orders (id, customer, items, status) VALUES ($1, $2, $3, $4)",
-			order.ID, order.Customer, order.Items, order.Status)
-		if err != nil {
-			http.Error(w, "Ошибка при сохранении заказа в базу данных", http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, "Сообщение отправлено: %s\n", order.ID)
-	})
+	http.HandleFunc("/order", handlers.OrderHandler(rdb, db, authClient, *kWriter))
 
 	// Хендлер для получения статуса заказа
-	http.HandleFunc("/order/status", func(w http.ResponseWriter, r *http.Request) {
-		orderID := r.URL.Query().Get("id")
-		if orderID == "" {
-			http.Error(w, "ID заказа не предоставлен", http.StatusBadRequest)
-			return
-		}
-		var order Order
-		// Поиск заказа в кэше
-		cachedOrder, err := rdb.Get(r.Context(), orderID).Result()
-		if err == nil {
-			err = json.Unmarshal([]byte(cachedOrder), &order)
-			if err != nil {
-				http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
-				return
-			}
-		} else if err == redis.Nil {
-			// Поиск заказа в базе данных
-			err = db.QueryRowContext(r.Context(), "SELECT id, customer, items, status FROM orders WHERE id=$1", orderID).Scan(
-				&order.ID, &order.Customer, &order.Items, &order.Status)
-			if err != nil {
-				http.Error(w, "Заказ не найден", http.StatusNotFound)
-				return
-			}
-		} else {
-			http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
+	http.HandleFunc("/order/status", handlers.StatusHandler(rdb, db))
+
+	// Хендлер для страницы авторизации
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Неправильный метод запроса", http.StatusMethodNotAllowed)
 			return
 		}
 
-		err = json.Unmarshal([]byte(cachedOrder), &order)
+		var credentials struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+			http.Error(w, "Неправильное тело запроса", http.StatusBadRequest)
+			return
+		}
+
+		if credentials.Username == "" || credentials.Password == "" {
+			http.Error(w, "Имя пользователя и пароль обязательны", http.StatusBadRequest)
+			return
+		}
+
+		token, err := authClient.Login(r.Context(), credentials.Username, credentials.Password)
 		if err != nil {
-			http.Error(w, "Ошибка при обработке заказа", http.StatusInternalServerError)
+			http.Error(w, "Неверное имя пользователя или пароль", http.StatusUnauthorized)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(order)
+		// Устанавливаем токен в куках
+		http.SetCookie(w, &http.Cookie{
+			Name:     "access_token",
+			Value:    token,
+			Expires:  time.Now().Add(24 * time.Hour),
+			HttpOnly: true,
+		})
+
+		http.Redirect(w, r, "/order", http.StatusSeeOther)
+	})
+
+	// Хендлер для страницы регистрации
+	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Неправильный метод запроса", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var credentials struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+			Email    string `json:"email"`
+		}
+
+		if credentials.Username == "" || credentials.Password == "" || credentials.Email == "" {
+			http.Error(w, "Имя пользователя, пароль и email обязательны", http.StatusBadRequest)
+			return
+		}
+
+		err := authClient.Register(r.Context(), credentials.Username, credentials.Password, credentials.Email)
+		if err != nil {
+			http.Error(w, "Ошибка при регистрации", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	})
 
 	// Добавляю таймауты для сервера для предотвращения долгих блокировок
@@ -248,7 +166,7 @@ func main() {
 				continue
 			}
 
-			var order Order
+			var order models.Order
 			err = json.Unmarshal(m.Value, &order)
 			if err != nil {
 				log.Printf("Ошибка при десериализации сообщения: %v", err)
@@ -256,7 +174,7 @@ func main() {
 			}
 
 			// Обновление статуса заказа в Redis и PostgreSQL
-			err = rdb.Set(context.Background(), order.ID, string(m.Value), 1*time.Hour).Err()
+			err = rdb.Set(context.Background(), order.ID.String(), string(m.Value), 1*time.Hour).Err()
 			if err != nil {
 				log.Printf("Ошибка обновления статуса заказа в Redis: %v", err)
 			}

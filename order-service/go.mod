@@ -4,6 +4,7 @@ go 1.23.3
 
 require (
 	github.com/go-redis/redis/v8 v8.11.5
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/sandrinasava/go-proto-module v0.0.0-20250319193724-ac1412542211
 	github.com/segmentio/kafka-go v0.4.47
