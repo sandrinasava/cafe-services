@@ -1,28 +1,23 @@
-# Этап сборки
-FROM golang:1.23.3 AS builder
 
-# Копирование модуля и зависимостей
+FROM golang:1.23.3-alpine AS builder
+
+# Проверяем версию Go
+RUN go version
+
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Копирование исходного кода
 COPY . .
 
-# Сборка приложения
-RUN go build -o myproject .
+RUN go build -o myproject -ldflags="-w -s" .
 
-# Этап запуска
-FROM alpine:latest
+FROM golang:1.23.3-alpine
 
-# Установка необходимых зависимостей
-RUN apk add --no-cache ca-certificates
-
-# Копирование собранного приложения из этапа сборки
-COPY --from=builder /app/myproject /app/myproject
-
-# Установка рабочей директории
 WORKDIR /app
 
-# Запуск приложения
+COPY --from=builder /app/myproject /app/myproject
+
+RUN chmod +x /app/myproject
+
 CMD ["./myproject"]

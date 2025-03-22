@@ -8,7 +8,7 @@ import (
 
 type Config struct {
 	DBDSN     string `env:"DB_DSN" env-default:"postgres://username:password@localhost:5432/postgres"`
-	Port      string `env:"AUTH_SERVICE_ADDRESS" env-default:"auth-service:50051"`
+	Port      string `env:"AUTH_PORT" env-default:"auth-service:50051"`
 	JwtSecret string `env:"JWT_SECRET" env-default:"your_generated_secret"`
 }
 

@@ -13,11 +13,6 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-const (
-	topicIn  = "new_orders"
-	topicOut = "ready_orders"
-)
-
 type Order struct {
 	ID       string   `json:"id"`
 	Customer string   `json:"customer"`
@@ -33,6 +28,9 @@ func main() {
 	}
 
 	kafkaBroker := cfg.Kafka.Broker
+	topicIn := cfg.Kafka.TopicIn
+	topicOut := cfg.Kafka.TopicOut
+
 	//создаю консьюмера
 	kReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: strings.Split(kafkaBroker, ","),

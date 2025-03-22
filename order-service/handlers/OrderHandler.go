@@ -15,8 +15,8 @@ import (
 	"github.com/sandrinasava/cafe-services/order-service/models"
 )
 
-// Хендлер для получения статуса заказа
-func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, kafkaBroker string) http.HandlerFunc {
+// Хендлер для обработки заказа
+func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, kWriter *kafka.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Метод не доступен", http.StatusMethodNotAllowed)
@@ -60,14 +60,6 @@ func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		//создаю продюсера
-		kWriter := kafka.Writer{
-			Addr:     kafka.TCP(kafkaBroker),
-			Topic:    models.TopicNewOrders,
-			Balancer: &kafka.LeastBytes{},
-		}
-		defer kWriter.Close()
 
 		// отправляю заказ в Kafka
 		err = kWriter.WriteMessages(r.Context(), kafka.Message{

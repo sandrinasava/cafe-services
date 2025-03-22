@@ -7,26 +7,18 @@ import (
 )
 
 type Config struct {
-	Server struct {
-		Port string `env:"PORT" env-default:"8083"`
-	} `env-prefix:"SERVER"`
-
 	Kafka struct {
 		Broker string `env:"KAFKA_BROKER" env-default:"kafka:9092"`
-		Topic  string `env:"KAFKA_TOPIC" env-default:"ready_orders"`
-	} `env-prefix:"KAFKA"`
+		Topic  string `env:"KAFKA_TOPIC_READY" env-default:"ready_orders"`
+	}
 
-	Postgres struct {
-		Host     string `env:"POSTGRES_HOST" env-default:"postgres"`
-		Port     string `env:"POSTGRES_PORT" env-default:"5432"`
-		User     string `env:"POSTGRES_USER" env-default:"user"`
-		Password string `env:"POSTGRES_PASSWORD" env-default:"password"`
-		DBName   string `env:"POSTGRES_DB" env-default:"delivery_db"`
-	} `env-prefix:"POSTGRES"`
-
-	JWT struct {
-		SecretKey string `env:"JWT_SECRET_KEY" env-required:"true"`
-	} `env-prefix:"JWT"`
+	DB struct {
+		DSN string `env:"DB_DSN" env-default:"postgres://username:password@localhost:5432/postgres"`
+	}
+	Redis struct {
+		Host     string `env:"REDIS_HOST" env-default:"redis:6379"`
+		Password string `env:"REDIS_PASSWORD" env-default:"defaultpassword"`
+	}
 }
 
 func loadConfig() (*Config, error) {

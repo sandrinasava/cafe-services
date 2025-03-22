@@ -22,7 +22,7 @@ type Config struct {
 	}
 
 	AuthService struct {
-		Address string `env:"AUTH_SERVICE_ADDRESS" env-default:"auth-service:50051"`
+		Address string `env:"AUTH_PORT" env-default:"auth-service:50051"`
 	}
 
 	DB struct {

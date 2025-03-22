@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,13 +27,14 @@ func main() {
 
 	kafkaBroker := cfg.Kafka.Broker
 	redisHost := cfg.Redis.Host
+	redisPassword := cfg.Redis.Password
 	authServiceAddress := cfg.AuthService.Address
 	dbDSN := cfg.DB.DSN
 
 	// создание нового клиента Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisHost,
-		Password: "",
+		Password: redisPassword,
 		DB:       0,
 	})
 	defer rdb.Close()
@@ -92,35 +92,6 @@ func main() {
 		log.Printf("Сервис заказов слушает на порту %d", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("HTTP server failed: %v", err)
-		}
-	}()
-
-	// Обработка сообщений из Kafka
-	go func() {
-		for {
-			m, err := kReader.ReadMessage(context.Background())
-			if err != nil {
-				log.Printf("Ошибка при чтении сообщения из Kafka: %v", err)
-				continue
-			}
-
-			var order models.Order
-			err = json.Unmarshal(m.Value, &order)
-			if err != nil {
-				log.Printf("Ошибка при десериализации сообщения: %v", err)
-				continue
-			}
-
-			// Обновление статуса заказа в Redis и PostgreSQL
-			err = rdb.Set(context.Background(), order.ID.String(), string(m.Value), 1*time.Hour).Err()
-			if err != nil {
-				log.Printf("Ошибка обновления статуса заказа в Redis: %v", err)
-			}
-
-			_, err = db.ExecContext(context.Background(), "UPDATE orders SET status=$1 WHERE id=$2", order.Status, order.ID)
-			if err != nil {
-				log.Printf("Ошибка обновления статуса заказа в PostgreSQL: %v", err)
-			}
 		}
 	}()
 
