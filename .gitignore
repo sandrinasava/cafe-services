@@ -3,4 +3,5 @@
 .kitchen-service/.env
 .order-service/.env
 .db/.env
-.redis/.env
+.redis/.env.env
+*.env
