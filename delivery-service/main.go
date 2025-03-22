@@ -51,7 +51,7 @@ func main() {
 	defer db.Close()
 
 	//создаю консьюмера
-	r := kafka.NewReader(kafka.ReaderConfig{
+	kReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: strings.Split(kafkaBroker, ","),
 		GroupID: "delivery-group",
 		Topic:   topic,
@@ -63,19 +63,19 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	//создаю контекст с отменой по сигналу
-	ctx, cancel := context.WithCancel(context.Background())
+	readctx, readCancel := context.WithCancel(context.Background())
 	go func() {
 		<-stop
-		cancel()
+		readCancel()
 	}()
 
 	// запускаю горутину
 	go func() {
 		for {
 			// читаю из брокера если ctx не отменен
-			m, err := r.ReadMessage(ctx)
+			m, err := kReader.ReadMessage(readctx)
 			if err != nil {
-				if ctx.Err() != nil {
+				if readctx.Err() != nil {
 					break
 				}
 				log.Printf("неудачное чтение из брокера: %v", err)
@@ -106,14 +106,23 @@ func main() {
 		}
 	}()
 
-	//далее закрываю консьюмер, если сервер остановился, чтобы избежать утечки данных
-	//ожидание сигнала
-	<-stop
-	log.Println("Остановка службы доставки")
-	//закрытие консьюмера
-	if err := r.Close(); err != nil {
-		log.Printf("Не удалось закрыть консьюмер: %v", err)
-	}
+	// Graceful Shutdown
 
-	log.Println("Служба доставки остановлена")
+	// Контекст с таймаутом для корректного завершения всех операций
+	shutdownctx, shutdowCancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+	defer shutdowCancel()
+	// ожидание сигнала
+	<-stop
+
+	log.Println("Остановка Kitchen-service")
+
+	// закрытие консьюмера
+	if err := kReader.Close(); err != nil {
+		log.Printf("Не удалось закрыть консьюмера Kafka: %v", err)
+	}
+	// Ожидание завершения всех операций
+	<-shutdownctx.Done()
+
+	log.Println("Kitchen-service остановлен")
 }

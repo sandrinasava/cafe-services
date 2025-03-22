@@ -148,6 +148,11 @@ func main() {
 		log.Printf("Не удалось закрыть продюсера Kafka: %v", err)
 	}
 
+	// закрытие консьюмера
+	if err := kReader.Close(); err != nil {
+		log.Printf("Не удалось закрыть консьюмера Kafka: %v", err)
+	}
+
 	// закрытие клиента Redis
 	if err := rdb.Close(); err != nil {
 		log.Printf("Не удалось закрыть клиент Redis: %v", err)

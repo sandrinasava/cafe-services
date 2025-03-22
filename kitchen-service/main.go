@@ -34,36 +34,36 @@ func main() {
 
 	kafkaBroker := cfg.Kafka.Broker
 	//создаю консьюмера
-	r := kafka.NewReader(kafka.ReaderConfig{
+	kReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: strings.Split(kafkaBroker, ","),
 		GroupID: "kitchen-group",
 		Topic:   topicIn,
 	})
 	//создаю продюсера
-	w := kafka.Writer{
-		Addr:     kafka.TCP(kafkaBroker),
+	kWriter := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  []string{kafkaBroker},
 		Topic:    topicOut,
 		Balancer: &kafka.LeastBytes{},
-	}
-
+	})
+	defer kWriter.Close()
 	//создаю канал, читающий сигналы ос
 	stop := make(chan os.Signal, 1)
 	//подписка на оповещение от ос о сигналах SIGINT(нажатие ctrl+c) и SIGTERM(завершение процесса)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	//создаю контекст с отменой по сигналу
-	ctx, cancel := context.WithCancel(context.Background())
+	//создаю контекст для корректного завершения цикла при сигналах остановки
+	readctx, readCancel := context.WithCancel(context.Background())
 	go func() {
 		<-stop
-		cancel()
+		readCancel()
 	}()
 
 	go func() {
 		for {
 			// читаю из брокера если ctx не отменен
-			m, err := r.ReadMessage(ctx)
+			m, err := kReader.ReadMessage(readctx)
 			if err != nil {
-				if ctx.Err() != nil {
+				if readctx.Err() != nil {
 					break
 				}
 				log.Printf("неудачное чтение из брокера: %v", err)
@@ -89,7 +89,7 @@ func main() {
 				continue
 			}
 			//отправка сообщения в брокер
-			err = w.WriteMessages(context.Background(), kafka.Message{
+			err = kWriter.WriteMessages(context.Background(), kafka.Message{
 				Key:   []byte(order.ID),
 				Value: message,
 			})
@@ -102,14 +102,28 @@ func main() {
 		}
 	}()
 
-	//далее закрываю консьюмер, если сервер остановился, чтобы избежать утечки данных
-	//ожидание сигнала
+	// Graceful Shutdown
+
+	// Контекст с таймаутом для корректного завершения всех операций
+	shutdownctx, shutdowCancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+	defer shutdowCancel()
+	// ожидание сигнала
 	<-stop
+
 	log.Println("Остановка Kitchen-service")
-	//закрытие консьюмера
-	if err := r.Close(); err != nil {
-		log.Printf("Не удалось закрыть консьюмер: %v", err)
+
+	// закрытие консьюмера
+	if err := kReader.Close(); err != nil {
+		log.Printf("Не удалось закрыть консьюмера Kafka: %v", err)
 	}
+
+	// закрытие консьюмера
+	if err := kWriter.Close(); err != nil {
+		log.Printf("Не удалось закрыть продюсера Kafka: %v", err)
+	}
+	// Ожидание завершения всех операций
+	<-shutdownctx.Done()
 
 	log.Println("Kitchen-service остановлен")
 }
