@@ -1,8 +1,8 @@
 
 FROM golang:1.23.3-alpine AS builder
 
-# Проверяем версию Go
-RUN go version
+ENV GOFLAGS=""
+ENV GOVERSION="go1.23.3"
 
 WORKDIR /app
 COPY go.mod go.sum ./
