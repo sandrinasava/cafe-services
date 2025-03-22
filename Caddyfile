@@ -1,0 +1,4 @@
+your-domain.com {
+    # Настройка order-service
+    reverse_proxy /api/* order-service:8081
+}

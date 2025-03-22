@@ -11,8 +11,8 @@ import (
 	"github.com/sandrinasava/cafe-services/order-service/models"
 )
 
-// Хендлер для получения статуса заказа
-func AuthZHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, kafkaBroker string) http.HandlerFunc {
+// Хендлер для авторизации
+func AuthZHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Неправильный метод запроса", http.StatusMethodNotAllowed)

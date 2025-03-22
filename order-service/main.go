@@ -53,14 +53,6 @@ func main() {
 	}
 	defer db.Close()
 
-	//создаю продюсера
-	kWriter := kafka.Writer{
-		Addr:     kafka.TCP(kafkaBroker),
-		Topic:    models.TopicNewOrders,
-		Balancer: &kafka.LeastBytes{},
-	}
-	defer kWriter.Close()
-
 	// Создание консюмера Kafka для получения сообщений о доставке
 	kReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: []string{kafkaBroker},
@@ -69,77 +61,23 @@ func main() {
 	})
 	defer kReader.Close()
 
-	// хендлер для обработки заказа
-	http.HandleFunc("/order", handlers.OrderHandler(rdb, db, authClient, *kWriter))
+	//создаю продюсера
+	kWriter := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  []string{kafkaBroker},
+		Topic:    models.TopicNewOrders,
+		Balancer: &kafka.LeastBytes{},
+	})
+	defer kWriter.Close()
 
-	// Хендлер для получения статуса заказа
+	// регистрация маршрутов
+
+	http.HandleFunc("/order", handlers.OrderHandler(rdb, db, authClient, kWriter))
+
 	http.HandleFunc("/order/status", handlers.StatusHandler(rdb, db))
 
-	// Хендлер для страницы авторизации
-	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Неправильный метод запроса", http.StatusMethodNotAllowed)
-			return
-		}
+	http.HandleFunc("/login", handlers.AuthZHandler(rdb, db, authClient))
 
-		var credentials struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}
-
-		if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
-			http.Error(w, "Неправильное тело запроса", http.StatusBadRequest)
-			return
-		}
-
-		if credentials.Username == "" || credentials.Password == "" {
-			http.Error(w, "Имя пользователя и пароль обязательны", http.StatusBadRequest)
-			return
-		}
-
-		token, err := authClient.Login(r.Context(), credentials.Username, credentials.Password)
-		if err != nil {
-			http.Error(w, "Неверное имя пользователя или пароль", http.StatusUnauthorized)
-			return
-		}
-
-		// Устанавливаем токен в куках
-		http.SetCookie(w, &http.Cookie{
-			Name:     "access_token",
-			Value:    token,
-			Expires:  time.Now().Add(24 * time.Hour),
-			HttpOnly: true,
-		})
-
-		http.Redirect(w, r, "/order", http.StatusSeeOther)
-	})
-
-	// Хендлер для страницы регистрации
-	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Неправильный метод запроса", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var credentials struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-			Email    string `json:"email"`
-		}
-
-		if credentials.Username == "" || credentials.Password == "" || credentials.Email == "" {
-			http.Error(w, "Имя пользователя, пароль и email обязательны", http.StatusBadRequest)
-			return
-		}
-
-		err := authClient.Register(r.Context(), credentials.Username, credentials.Password, credentials.Email)
-		if err != nil {
-			http.Error(w, "Ошибка при регистрации", http.StatusInternalServerError)
-			return
-		}
-
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-	})
+	http.HandleFunc("/register", handlers.RegistHandler(authClient))
 
 	// Добавляю таймауты для сервера для предотвращения долгих блокировок
 	srv := &http.Server{
