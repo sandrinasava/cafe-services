@@ -1,7 +1,1 @@
-.auth-service/.env
-.delivery-service/.env
-.kitchen-service/.env
-.order-service/.env
-.db/.env
-.redis/.env.env
 *.env
