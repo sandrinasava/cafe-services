@@ -10,7 +10,18 @@ import (
 	"github.com/sandrinasava/cafe-services/order-service/models"
 )
 
-// Хендлер для получения статуса заказа
+// StatusHandler godoc
+// @Summary Получение статуса заказа
+// @Description Обработчик для получения статуса заказа по ID
+// @ID status-handler
+// @Accept json
+// @Produce json
+// @Param id query string true "Order ID"
+// @Success 200 {object} map[string]interface{} "Статус заказа"
+// @Failure 400 {object} map[string]interface{} "Неправильный запрос"
+// @Failure 404 {object} map[string]interface{} "Заказ не найден"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /order/status [get]
 func StatusHandler(rdb *redis.Client, db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		orderID := r.URL.Query().Get("id")

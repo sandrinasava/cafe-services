@@ -15,7 +15,20 @@ import (
 	"github.com/sandrinasava/cafe-services/order-service/models"
 )
 
-// Хендлер для обработки заказа
+// OrderHandler godoc
+// @Summary Создание нового заказа
+// @Description Обработчик для создания нового заказа
+// @ID order-handler
+// @Accept json
+// @Produce json
+// @Param customer body string true "Customer Name"
+// @Param items body string true "Items"
+// @Success 201 {string} string "Заказ успешно создан"
+// @Failure 400 {object} map[string]interface{} "Неправильное тело запроса"
+// @Failure 401 {object} map[string]interface{} "Недействительный токен"
+// @Failure 405 {object} map[string]interface{} "Метод не доступен"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /order [post]
 func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, kWriter *kafka.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

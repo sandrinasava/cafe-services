@@ -1,0 +1,168 @@
+definitions:
+  models.Credentials:
+    description: Структура данных, содержащая учетные данные пользователя
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Обработчик для авторизации пользователя по имени пользователя и
+        паролю. Возвращает токен доступа при успешной аутентификации
+      operationId: authz-handler
+      parameters:
+      - description: Учетные данные пользователя
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/models.Credentials'
+      produces:
+      - application/json
+      responses:
+        "303":
+          description: Перенаправление на страницу заказов с установленным токеном
+            доступа в куках
+        "400":
+          description: Неправильное тело запроса
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Неверное имя пользователя или пароль
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Неправильный метод запроса
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Авторизация пользователя
+  /order:
+    post:
+      consumes:
+      - application/json
+      description: Обработчик для создания нового заказа
+      operationId: order-handler
+      parameters:
+      - description: Customer Name
+        in: body
+        name: customer
+        required: true
+        schema:
+          type: string
+      - description: Items
+        in: body
+        name: items
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Заказ успешно создан
+          schema:
+            type: string
+        "400":
+          description: Неправильное тело запроса
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Недействительный токен
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Метод не доступен
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Создание нового заказа
+  /order/status:
+    get:
+      consumes:
+      - application/json
+      description: Обработчик для получения статуса заказа по ID
+      operationId: status-handler
+      parameters:
+      - description: Order ID
+        in: query
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Статус заказа
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Неправильный запрос
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Заказ не найден
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Получение статуса заказа
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Обработчик для регистрации нового пользователя
+      operationId: regist-handler
+      parameters:
+      - description: Учетные данные пользователя
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/models.Credentials'
+      produces:
+      - application/json
+      responses:
+        "303":
+          description: Перенаправление на страницу логина
+        "400":
+          description: Неправильное тело запроса
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Неправильный метод запроса
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Регистрация нового пользователя
+swagger: "2.0"

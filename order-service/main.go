@@ -11,9 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/swaggo/files"
+	httpSwagger "github.com/swaggo/http-swagger"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/segmentio/kafka-go"
 
+	_ "github.com/sandrinasava/cafe-services/order-service/docs"
 	"github.com/sandrinasava/cafe-services/order-service/handlers"
 	"github.com/sandrinasava/cafe-services/order-service/models"
 )
@@ -78,6 +82,11 @@ func main() {
 	http.HandleFunc("/login", handlers.AuthZHandler(rdb, db, authClient))
 
 	http.HandleFunc("/register", handlers.RegistHandler(authClient))
+
+	// Инициализация маршрута для Swagger UI
+	http.HandleFunc("/swagger/", func(w http.ResponseWriter, r *http.Request) {
+		httpSwagger.WrapHandler(w, r)
+	})
 
 	// Добавляю таймауты для сервера для предотвращения долгих блокировок
 	srv := &http.Server{

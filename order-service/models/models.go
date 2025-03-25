@@ -10,13 +10,23 @@ import (
 	pb "github.com/sandrinasava/go-proto-module"
 )
 
-// определяю топик, в который будут отправляться сообщения
+// определяю топики, в которые будут отправляться сообщения
 const (
 	TopicNewOrders      = "new_orders"
 	TopicOrderCooked    = "order_cooked"
 	TopicOrderDelivered = "order_delivered"
 )
 
+// Credentials представляет структуру данных для регистрации или авторизации
+// @Description Структура данных, содержащая учетные данные пользователя
+type Credentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+// Order представляет структуру заказа
+// @Description Заказ, содержащий информацию о клиенте, товарах и статусе
 type Order struct {
 	ID       uuid.UUID `json:"id"`
 	Customer string    `json:"customer"`
@@ -24,15 +34,18 @@ type Order struct {
 	Status   string    `json:"status"`
 }
 
+// AuthClient представляет клиент для взаимодействия с auth-service через gRPC
 type AuthClient struct {
 	Client pb.AuthServiceClient
 	Conn   *grpc.ClientConn
 }
 
+// Close закрывает соединение с auth-service
 func (c *AuthClient) Close() error {
 	return c.Conn.Close()
 }
 
+// ValidateToken проверяет валидность токена
 func (c *AuthClient) ValidateToken(ctx context.Context, token string) (bool, error) {
 	resp, err := c.Client.ValidateToken(ctx, &pb.ValidateTokenRequest{Token: token})
 	if err != nil {
@@ -41,6 +54,7 @@ func (c *AuthClient) ValidateToken(ctx context.Context, token string) (bool, err
 	return resp.Valid, nil
 }
 
+// Login выполняет вход пользователя и возвращает токен
 func (c *AuthClient) Login(ctx context.Context, username, password string) (string, error) {
 	resp, err := c.Client.Login(ctx, &pb.LoginRequest{Username: username, Password: password})
 	if err != nil {
@@ -57,7 +71,7 @@ func (c *AuthClient) Register(ctx context.Context, username, password, email str
 	return nil
 }
 
-// ф-я создает новый клиент для взаимодействия с auth-service по gRPC
+// NewAuthClient создает новый клиент для взаимодействия с auth-service по gRPC
 func NewAuthClient(address string) (*AuthClient, error) {
 	//установка соединения с сервером gRPC
 	conn, err := grpc.NewClient(address)
