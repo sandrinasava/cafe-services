@@ -44,6 +44,12 @@ func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, 
 		}
 		defer r.Body.Close()
 
+		// проверяю наличие идентификатора клиента
+		if order.Customer == uuid.Nil {
+			http.Redirect(w, r, "/register", http.StatusFound)
+			return
+		}
+
 		// достаю токен из заголовков
 		token := r.Header.Get("Authorization")
 		if token == "" {
@@ -92,7 +98,7 @@ func OrderHandler(rdb *redis.Client, db *sql.DB, authClient *models.AuthClient, 
 		}
 
 		// Сохранение заказа в PostgreSQL
-		_, err = db.ExecContext(r.Context(), "INSERT INTO orders (id, customer, items, status) VALUES ($1, $2, $3, $4)",
+		_, err = db.ExecContext(r.Context(), "INSERT INTO orders (order_UUID, username, items, status) VALUES ($1, $2, $3, $4)",
 			order.ID, order.Customer, order.Items, order.Status)
 		if err != nil {
 			http.Error(w, "Ошибка при сохранении заказа в базу данных", http.StatusInternalServerError)

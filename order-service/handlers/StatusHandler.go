@@ -40,7 +40,7 @@ func StatusHandler(rdb *redis.Client, db *sql.DB) http.HandlerFunc {
 			}
 		} else if err == redis.Nil {
 			// Поиск заказа в базе данных
-			err = db.QueryRowContext(r.Context(), "SELECT id, customer, items, status FROM orders WHERE id=$1", orderID).Scan(
+			err = db.QueryRowContext(r.Context(), "SELECT order_UUID, username, items, status FROM orders WHERE id=$1", orderID).Scan(
 				&order.ID, &order.Customer, &order.Items, &order.Status)
 			if err != nil {
 				http.Error(w, "Заказ не найден", http.StatusNotFound)

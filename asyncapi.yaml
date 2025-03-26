@@ -1,0 +1,83 @@
+asyncapi: 3.0.0
+info:
+  title: Cafe Services API
+  version: 1.0.0
+  description: >
+    Этот документ описывает асинхронный API для приложения по управлению
+    заказами в ресторане.
+
+    Он включает взаимодействие между order-service, kitchen-service и
+    delivery-service через топики Kafka.
+servers:
+  kafka:
+    host: 'kafka:9092'
+    protocol: kafka
+    description: Kafka брокер для обмена сообщениями
+channels:
+  new_orders:
+    address: new_orders
+    messages:
+      subscribe.message:
+        $ref: '#/components/messages/NewOrderMessage'
+    bindings:
+      kafka:
+        topic: new_orders
+        x-consumerGroupId: kitchen-group
+  ready_orders:
+    address: ready_orders
+    messages:
+      subscribe.message:
+        $ref: '#/components/messages/ReadyOrderMessage'
+    bindings:
+      kafka:
+        topic: ready_orders
+        x-consumerGroupId: delivery-group
+operations:
+  new_orders.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/new_orders'
+    summary: order-service отправляет новые заказы в kitchen-service
+    messages:
+      - $ref: '#/channels/new_orders/messages/subscribe.message'
+  ready_orders.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/ready_orders'
+    summary: kitchen-service отправляет готовые заказы в delivery-service
+    messages:
+      - $ref: '#/channels/ready_orders/messages/subscribe.message'
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор заказа
+        customer:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор клиента
+        items:
+          type: array
+          items:
+            type: string
+          description: Список товаров в заказе
+        status:
+          type: string
+          enum:
+            - received
+            - ready
+            - delivered
+          description: Статус заказа
+  messages:
+    NewOrderMessage:
+      summary: 'Новый заказ, размещенный клиентом'
+      payload:
+        $ref: '#/components/schemas/Order'
+    ReadyOrderMessage:
+      summary: 'Заказ, подготовленный кухней'
+      payload:
+        $ref: '#/components/schemas/Order'

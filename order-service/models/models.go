@@ -10,13 +10,6 @@ import (
 	pb "github.com/sandrinasava/go-proto-module"
 )
 
-// определяю топики, в которые будут отправляться сообщения
-const (
-	TopicNewOrders      = "new_orders"
-	TopicOrderCooked    = "order_cooked"
-	TopicOrderDelivered = "order_delivered"
-)
-
 // Credentials представляет структуру данных для регистрации или авторизации
 // @Description Структура данных, содержащая учетные данные пользователя
 type Credentials struct {
@@ -29,7 +22,7 @@ type Credentials struct {
 // @Description Заказ, содержащий информацию о клиенте, товарах и статусе
 type Order struct {
 	ID       uuid.UUID `json:"id"`
-	Customer string    `json:"customer"`
+	Customer uuid.UUID `json:"customer"`
 	Items    []string  `json:"items"`
 	Status   string    `json:"status"`
 }

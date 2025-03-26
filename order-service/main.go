@@ -34,6 +34,7 @@ func main() {
 	redisPassword := cfg.Redis.Password
 	authServiceAddress := cfg.AuthService.Address
 	dbDSN := cfg.DB.DSN
+	topicIn := cfg.Kafka.Topic
 
 	// создание нового клиента Redis
 	rdb := redis.NewClient(&redis.Options{
@@ -57,18 +58,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Создание консюмера Kafka для получения сообщений о доставке
-	kReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaBroker},
-		Topic:   models.TopicOrderDelivered,
-		GroupID: "order-service",
-	})
-	defer kReader.Close()
-
 	//создаю продюсера
 	kWriter := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:  []string{kafkaBroker},
-		Topic:    models.TopicNewOrders,
+		Topic:    topicIn,
 		Balancer: &kafka.LeastBytes{},
 	})
 	defer kWriter.Close()
@@ -126,11 +119,6 @@ func main() {
 	// закрытие консьюмера
 	if err := kWriter.Close(); err != nil {
 		log.Printf("Не удалось закрыть продюсера Kafka: %v", err)
-	}
-
-	// закрытие консьюмера
-	if err := kReader.Close(); err != nil {
-		log.Printf("Не удалось закрыть консьюмера Kafka: %v", err)
 	}
 
 	// закрытие клиента Redis
