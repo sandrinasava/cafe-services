@@ -25,9 +25,10 @@ Cafe-services - микросервисное приложение, для упр
 - **Docker-деплой:** Docker Compose
 - **Прокси:** Caddy
 - **Api:** gRPC, REST
-- **Open Api** swaggo/swag
+- **Документация и протоколы:** 
+  - **OpenAPI:** swaggo/swag
+  - **AsyncAPI:** вручную в sayncapi.yaml
+  - **Protobuf:** компилятор protocolbuffers/protobuf/releases, плагины protoc-gen-go, protoc-gen-go-grpc
 - **CI/CD** GitHub Actions
-  - Протоколы и Генерация кода:
-  .proto файл хранится в https://github.com/sandrinasava/proto-definitions и при изменении автоматически обновляет 
+  - .proto файл хранится в https://github.com/sandrinasava/proto-definitions и при изменении автоматически обновляет 
   сгенерированный код в https://github.com/sandrinasava/go-proto-module
-
