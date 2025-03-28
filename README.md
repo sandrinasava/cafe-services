@@ -30,5 +30,5 @@ Cafe-services - микросервисное приложение, для упр
   - **AsyncAPI:** вручную в sayncapi.yaml
   - **Protobuf:** компилятор protocolbuffers/protobuf/releases, плагины protoc-gen-go, protoc-gen-go-grpc
 - **CI/CD** GitHub Actions
-  - .proto файл хранится в https://github.com/sandrinasava/proto-definitions и при изменении автоматически обновляет 
-  сгенерированный код в https://github.com/sandrinasava/go-proto-module
+  - .proto файл хранится в [proto-definitions](https://github.com/sandrinasava/proto-definitions) и при изменении автоматически обновляет 
+  сгенерированный код в [go-proto-module](https://github.com/sandrinasava/go-proto-module)
